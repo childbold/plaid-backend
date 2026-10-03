@@ -106,6 +106,8 @@ In sandbox, you can trigger a webhook on demand with Plaid's `/sandbox/item/fire
 
 ## Moving to production
 
+`.env.example` is already set to `PLAID_ENV=production` with no extra products. Put your production secret in `.env` and link real banks from the admin page. To go back to fake test banks, set `PLAID_ENV=sandbox` with the sandbox secret.
+
 1. Set `PLAID_ENV=production` and swap in the production secret.
 2. Set `PLAID_REDIRECT_URI` to an HTTPS URL registered in the Plaid dashboard (needed for OAuth banks).
 3. Start with a fresh database. Sandbox Items don't carry over.
