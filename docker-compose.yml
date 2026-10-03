@@ -1,0 +1,13 @@
+services:
+  plaid-backend:
+    build: .
+    container_name: plaid-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/plaid.db
+    ports:
+      - "8080:8080"
+    volumes:
+      # ZimaOS persistent storage; change the host path for other machines
+      - /DATA/AppData/plaid-backend:/data
