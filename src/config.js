@@ -20,7 +20,10 @@ export const config = {
     products: list(process.env.PLAID_PRODUCTS, 'transactions'),
     // Pulled on every sync when the bank supports them. "recurring" is /transactions/recurring/get;
     // the rest are also requested at Link via required_if_supported_products.
-    extraProducts: list(process.env.PLAID_EXTRA_PRODUCTS, 'liabilities,investments,identity,recurring'),
+    // Unset: all four. Set but empty (PLAID_EXTRA_PRODUCTS=): transactions only.
+    extraProducts: process.env.PLAID_EXTRA_PRODUCTS === undefined
+      ? ['liabilities', 'investments', 'identity', 'recurring']
+      : list(process.env.PLAID_EXTRA_PRODUCTS, ''),
     countryCodes: list(process.env.PLAID_COUNTRY_CODES, 'US'),
     webhookUrl: process.env.PLAID_WEBHOOK_URL || undefined,
     redirectUri: process.env.PLAID_REDIRECT_URI || undefined,
