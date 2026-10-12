@@ -59,6 +59,7 @@ All requests need `Authorization: Bearer <key>` (or `X-API-Key`).
 | GET | `/api/admin/items` | admin | |
 | POST | `/api/admin/items/:id/sync` | admin | |
 | POST | `/api/admin/sync` | admin | Sync everything |
+| GET | `/api/admin/backup` | admin | Downloads a consistent copy of the database (also the "Download backup" button). Tokens stay encrypted; `TOKEN_ENCRYPTION_KEY` is not included |
 | DELETE | `/api/admin/items/:id` | admin | Calls `/item/remove` to free the slot |
 | GET/POST/DELETE | `/api/admin/clients[/:id]` | admin | Create returns the key once; delete revokes |
 | POST | `/webhooks/plaid` | Plaid JWT | Signature verified |

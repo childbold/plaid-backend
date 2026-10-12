@@ -1,4 +1,7 @@
 // Admin-only: manage Items and frontend API clients.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { Router } from 'express';
 import { db } from '../db.js';
 import { plaid, plaidError } from '../plaid.js';
@@ -19,6 +22,21 @@ admin.post('/items/:id/sync', async (req, res) => {
 
 admin.post('/sync', async (req, res) => {
   res.json(await syncAll());
+});
+
+// Consistent snapshot of the whole database, safe while syncing. Access tokens inside stay
+// encrypted; TOKEN_ENCRYPTION_KEY is not included, so keep that backed up separately.
+admin.get('/backup', async (req, res, next) => {
+  const tmp = path.join(os.tmpdir(), `plaid-backup-${process.pid}-${Date.now()}.db`);
+  try {
+    await db.backup(tmp);
+    const name = `plaid-backup-${new Date().toLocaleDateString('en-CA')}.db`; // local YYYY-MM-DD
+    res.set('Cache-Control', 'no-store');
+    res.download(tmp, name, () => fs.rm(tmp, { force: true }, () => {}));
+  } catch (err) {
+    fs.rm(tmp, { force: true }, () => {});
+    next(err);
+  }
 });
 
 // Frees the slot at Plaid and deletes all local data for the Item.

@@ -45,6 +45,7 @@
     <div class="row" style="justify-content:space-between">
       <h2 style="margin:0">Linked banks <span class="muted" id="count"></span></h2>
       <div class="row">
+        <button id="backupBtn" title="Download a copy of the database. Your TOKEN_ENCRYPTION_KEY is not included.">Download backup</button>
         <button id="syncAll">Sync all</button>
         <button class="primary" id="linkBtn">Link a bank</button>
       </div>
@@ -130,6 +131,18 @@ async function openLink(itemId) {
 
 $('save').onclick = () => { adminKey = $('key').value.trim(); sessionStorage.setItem('adminKey', adminKey); refresh(); };
 $('linkBtn').onclick = () => openLink().catch(e => say(e.message, true));
+$('backupBtn').onclick = async () => {
+  say('Preparing backup…');
+  try {
+    const res = await fetch('/api/admin/backup', { headers: { Authorization: 'Bearer ' + adminKey } });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    const name = (res.headers.get('content-disposition') || '').match(/filename="?([^";]+)"?/)?.[1] || 'plaid-backup.db';
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(await res.blob()), download: name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    say(`Downloaded ${name}. It doesn't contain TOKEN_ENCRYPTION_KEY; keep that backed up separately.`);
+  } catch (e) { say(e.message, true); }
+};
 $('syncAll').onclick = async () => { say('Syncing…'); try { await api('/sync', { method: 'POST' }); refresh(); } catch (e) { say(e.message, true); } };
 $('addClient').onclick = async () => {
   try {
