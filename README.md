@@ -79,7 +79,7 @@ Browser frontends on a different origin must be listed in `CORS_ORIGINS`. Server
 
 ## What gets pulled
 
-Every sync fetches accounts and transactions, then each product in `PLAID_EXTRA_PRODUCTS` (default `liabilities,investments,identity,recurring`) on its own, so one the bank doesn't offer never blocks the rest. The result for each lands in `product_status` on `/api/institutions` and on the admin page:
+Every sync fetches accounts and transactions, then each product in `PLAID_EXTRA_PRODUCTS` on its own (any of `liabilities,investments,identity,recurring`; set it empty for transactions only, or leave it out to pull all four), so one the bank doesn't offer never blocks the rest. The result for each lands in `product_status` on `/api/institutions` and on the admin page:
 
 - `ok`: synced
 - `unsupported`: the bank doesn't offer it
@@ -102,7 +102,9 @@ Data refreshes three ways: on link, every `SYNC_INTERVAL_MINUTES`, and when Plai
 
 ## Production notes
 
+`.env.example` is set to `PLAID_ENV=production` with no extra products (transactions only).
+
 - `PLAID_SECRET` must be the **Production** secret from the Plaid dashboard.
 - Set `PLAID_REDIRECT_URI` to an HTTPS URL registered in the Plaid dashboard. OAuth banks (Chase and most large US banks) can't link without it.
-- Link each real bank once. Re-auth with the "Re-auth" button rather than linking again, which would bill a second Item.
-- Each product in `PLAID_EXTRA_PRODUCTS` is billed per Item; trim it to what you use.
+- Link each real bank once. Re-auth with the "Re-auth" button rather than linking again, which would use another Item.
+- Each product in `PLAID_EXTRA_PRODUCTS` is billed per Item; add only what you use.
