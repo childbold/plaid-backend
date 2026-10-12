@@ -48,8 +48,8 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.expose ? err.message : 'internal error' });
 });
 
-app.listen(config.port, () => {
-  console.log(`plaid-backend listening on :${config.port} (Plaid env: ${config.plaid.env})`);
+app.listen(config.port, config.host, () => {
+  console.log(`plaid-backend listening on ${config.host}:${config.port} (Plaid env: ${config.plaid.env})`);
   if (config.syncIntervalMinutes > 0) {
     setInterval(() => syncAll().catch(e => console.error('[scheduler]', e)), config.syncIntervalMinutes * 60_000);
   }

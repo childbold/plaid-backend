@@ -7,7 +7,7 @@ services:
     environment:
       DB_PATH: /data/plaid.db
     ports:
-      - "7600:7600"
+      - "127.0.0.1:7600:7600"   # host-only; put tailscale serve in front
     volumes:
       # ZimaOS persistent storage; change the host path for other machines
       - /DATA/AppData/plaid-backend:/data

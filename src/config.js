@@ -8,6 +8,8 @@ const list = (v, fallback) => (v || fallback).split(',').map(s => s.trim()).filt
 
 export const config = {
   port: Number(process.env.PORT || 7600),
+  // Local-only by default: reach it through `tailscale serve`, not the LAN.
+  host: process.env.HOST || '127.0.0.1',
   dbPath: process.env.DB_PATH || './data/plaid.db',
   adminApiKey: required('ADMIN_API_KEY'),
   encryptionKey: required('TOKEN_ENCRYPTION_KEY'),
