@@ -59,17 +59,10 @@ link.post('/link/exchange', async (req, res) => {
   try {
     const { data } = await plaid.itemPublicTokenExchange({ public_token });
 
-    // Guard the free-Item budget: if this bank is already linked, throw the new Item away.
+    // Never throw a new Item away. Plaid created (and counted) it before this ran, and
+    // removing it doesn't give a trial slot back. Keep it and flag the duplicate instead.
     const instId = institution?.institution_id ?? null;
     const dupe = instId && db.prepare('SELECT item_id FROM items WHERE institution_id = ?').get(instId);
-    if (dupe) {
-      await plaid.itemRemove({ access_token: data.access_token }).catch(() => {});
-      return res.status(409).json({
-        error: 'institution already linked; new Item removed',
-        existing_item_id: dupe.item_id,
-        hint: 'use update mode (POST /link/token with item_id) to re-authenticate instead',
-      });
-    }
 
     db.prepare(`INSERT INTO items (item_id, access_token_enc, institution_id, institution_name)
                 VALUES (?, ?, ?, ?)`)
@@ -77,7 +70,13 @@ link.post('/link/exchange', async (req, res) => {
 
     // Kick off the initial sync without making the browser wait for it.
     syncItem(data.item_id).catch(() => {});
-    res.status(201).json({ item_id: data.item_id });
+    res.status(201).json({
+      item_id: data.item_id,
+      ...(dupe && {
+        duplicate_of: dupe.item_id,
+        warning: `${institution?.name || 'This bank'} was already linked. Both are kept; remove the one you don't want.`,
+      }),
+    });
   } catch (err) {
     res.status(502).json(plaidError(err));
   }

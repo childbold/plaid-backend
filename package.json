@@ -9,7 +9,6 @@
     "start": "node src/server.js",
     "dev": "node --watch --env-file=.env src/server.js",
     "create-client": "node --env-file=.env scripts/create-client.js",
-    "sandbox-item": "node --env-file=.env scripts/sandbox-item.js",
     "gen-key": "node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\""
   },
   "dependencies": {

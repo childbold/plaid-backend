@@ -8,21 +8,19 @@ admin page ─(admin key)───────▶ /api/admin/*  link banks, sync
 Plaid ─────(signed webhooks)──▶ /webhooks/plaid
 ```
 
-## Quick start (local, sandbox)
+## Quick start (local)
 
 ```bash
 npm install
 cp .env.example .env
 npm run gen-key            # paste output into TOKEN_ENCRYPTION_KEY
 openssl rand -base64 32    # paste into ADMIN_API_KEY
-# fill in PLAID_CLIENT_ID and your sandbox PLAID_SECRET
+# fill in PLAID_CLIENT_ID and your production PLAID_SECRET
+# set PLAID_REDIRECT_URI (see below) before linking OAuth banks like Chase
 npm run dev
 ```
 
-Then either:
-
-- **Browser:** open http://localhost:8080/admin, enter the admin key, click "Link a bank", and log in with `user_good` / `pass_good`.
-- **No browser:** `npm run sandbox-item` creates a sandbox Item directly and runs the first sync. Pass an institution id to pick another bank, e.g. `npm run sandbox-item -- ins_109511`.
+Then open http://localhost:7600/admin, enter the admin key, and click "Link a bank" to sign in to a real bank.
 
 Create a key for each frontend from the admin page, or:
 
@@ -95,8 +93,6 @@ New links request the extras through `required_if_supported_products`, so they d
 
 Data refreshes three ways: on link, every `SYNC_INTERVAL_MINUTES`, and when Plaid sends a new-data webhook (transactions, recurring, holdings, investment transactions or liabilities). Webhooks only arrive if `PLAID_WEBHOOK_URL` is a public HTTPS URL (Tailscale Funnel on the `/webhooks/plaid` path works). Without one, the scheduled sync covers you.
 
-In sandbox, you can trigger a webhook on demand with Plaid's `/sandbox/item/fire_webhook`.
-
 ## Security notes
 
 - Keep this on your tailnet. Only expose `/webhooks/plaid` publicly if you use webhooks.
@@ -104,9 +100,9 @@ In sandbox, you can trigger a webhook on demand with Plaid's `/sandbox/item/fire
 - Back up `/data/plaid.db` (WAL mode, so copy `plaid.db*` or use `sqlite3 plaid.db ".backup out.db"`).
 - Client keys are stored as SHA-256 hashes and can be revoked individually.
 
-## Moving to production
+## Production notes
 
-1. Set `PLAID_ENV=production` and swap in the production secret.
-2. Set `PLAID_REDIRECT_URI` to an HTTPS URL registered in the Plaid dashboard (needed for OAuth banks).
-3. Start with a fresh database. Sandbox Items don't carry over.
-4. Link each real bank once. Re-auth with the "Re-auth" button rather than linking again.
+- `PLAID_SECRET` must be the **Production** secret from the Plaid dashboard.
+- Set `PLAID_REDIRECT_URI` to an HTTPS URL registered in the Plaid dashboard. OAuth banks (Chase and most large US banks) can't link without it.
+- Link each real bank once. Re-auth with the "Re-auth" button rather than linking again, which would bill a second Item.
+- Each product in `PLAID_EXTRA_PRODUCTS` is billed per Item; trim it to what you use.

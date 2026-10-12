@@ -8,6 +8,16 @@ export const db = new Database(config.dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+// A database belongs to one Plaid environment. Sandbox tokens fail in production (and a sandbox
+// bank can shadow the real one), so refuse to start rather than mix them.
+db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+const dbEnv = db.prepare("SELECT value FROM meta WHERE key = 'plaid_env'").get()?.value;
+if (!dbEnv) db.prepare("INSERT INTO meta (key, value) VALUES ('plaid_env', ?)").run(config.plaid.env);
+else if (dbEnv !== config.plaid.env) {
+  throw new Error(`This database holds ${dbEnv} data but PLAID_ENV is ${config.plaid.env}. ` +
+    'Point DB_PATH at a separate file for each environment.');
+}
+
 db.exec(`
 CREATE TABLE IF NOT EXISTS clients (
   id          INTEGER PRIMARY KEY,

@@ -49,7 +49,6 @@
         <button class="primary" id="linkBtn">Link a bank</button>
       </div>
     </div>
-    <div class="muted" id="sandboxHint" hidden>Sandbox: pick any bank, then log in with <code>user_good</code> / <code>pass_good</code>.</div>
     <table><thead><tr><th>Institution</th><th>Status</th><th>Last sync</th><th></th></tr></thead><tbody id="items"></tbody></table>
   </section>
 
@@ -119,10 +118,10 @@ async function openLink(itemId) {
     onSuccess: async (public_token, metadata) => {
       if (itemId) { say('Updated. Syncing…'); await api(`/items/${itemId}/sync`, { method: 'POST' }); say('Updated.'); return refresh(); }
       try {
-        await api('/link/exchange', { method: 'POST', body: { public_token, institution: metadata.institution } });
-        say(`Linked ${metadata.institution?.name}. Initial sync running…`);
+        const r = await api('/link/exchange', { method: 'POST', body: { public_token, institution: metadata.institution } });
+        say(r.warning || `Linked ${metadata.institution?.name}. Initial sync running…`, !!r.warning);
         setTimeout(refresh, 3000);
-      } catch (e) { say(e.message + (e.body?.hint ? ' — ' + e.body.hint : ''), true); }
+      } catch (e) { say(e.message, true); }
       refresh();
     },
     onExit: err => err && say(err.display_message || err.error_message || 'Link closed', true),
@@ -150,7 +149,7 @@ document.body.addEventListener('click', async e => {
     refresh();
   } catch (err) { say(err.message, true); }
 });
-fetch('/healthz').then(r => r.json()).then(h => { $('env').textContent = 'Plaid environment: ' + h.env; $('sandboxHint').hidden = h.env !== 'sandbox'; });
+fetch('/healthz').then(r => r.json()).then(h => { $('env').textContent = 'Plaid environment: ' + h.env; });
 refresh();
 </script>
 </body>

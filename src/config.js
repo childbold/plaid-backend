@@ -7,7 +7,7 @@ function required(name) {
 const list = (v, fallback) => (v || fallback).split(',').map(s => s.trim()).filter(Boolean);
 
 export const config = {
-  port: Number(process.env.PORT || 8080),
+  port: Number(process.env.PORT || 7600),
   dbPath: process.env.DB_PATH || './data/plaid.db',
   adminApiKey: required('ADMIN_API_KEY'),
   encryptionKey: required('TOKEN_ENCRYPTION_KEY'),
@@ -16,7 +16,7 @@ export const config = {
   plaid: {
     clientId: required('PLAID_CLIENT_ID'),
     secret: required('PLAID_SECRET'),
-    env: process.env.PLAID_ENV || 'sandbox',
+    env: process.env.PLAID_ENV || 'production',
     products: list(process.env.PLAID_PRODUCTS, 'transactions'),
     // Pulled on every sync when the bank supports them. "recurring" is /transactions/recurring/get;
     // the rest are also requested at Link via required_if_supported_products.
