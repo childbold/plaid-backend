@@ -2,7 +2,8 @@ FROM node:22-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
-RUN npm ci --omit=dev || npm install --omit=dev
+# npm ci installs exactly what the lockfile pins, and fails loudly if it can't.
+RUN npm ci --omit=dev
 COPY src ./src
 COPY public ./public
 COPY scripts ./scripts

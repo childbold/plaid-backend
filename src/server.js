@@ -12,7 +12,10 @@ import { syncAll } from './sync.js';
 
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', 'loopback');
+// Believe X-Forwarded-* from tailscale serve. In Docker the request arrives from
+// the bridge gateway, not loopback, hence the private ranges; the port is
+// published on 127.0.0.1 only, so nothing else can reach the app to send them.
+app.set('trust proxy', 'loopback, linklocal, uniquelocal');
 
 // Minimal CORS: only listed origins, only for browser frontends.
 app.use((req, res, next) => {
