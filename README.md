@@ -31,11 +31,28 @@ npm run create-client -- budget-app
 ## Docker (ZimaOS)
 
 ```bash
-sudo mkdir -p /DATA/AppData/plaid-backend
-sudo chown 1000:1000 /DATA/AppData/plaid-backend   # container runs as the non-root "node" user
+sudo mkdir -p /DATA/AppData/plaid-backend/data
+sudo chown 1000:1000 /DATA/AppData/plaid-backend/data   # container runs as the non-root "node" user
 docker compose up -d --build
 docker compose logs -f
+# HTTPS on the tailnet, same port (Tailscale runs in its own container on ZimaOS)
+sudo docker exec tailscale tailscale serve --bg --https=7600 http://127.0.0.1:7600
 ```
+
+### Moving an older install's database into `data/` (one time)
+
+Installs from before October 2026 mounted the whole `/DATA/AppData/plaid-backend` folder as `/data`, so the database sits beside `ssh/` (the deploy key) and `app/` (this checkout), and the container could see both. Move it into its own folder **before** pulling this version, with the app stopped:
+
+```bash
+cd /DATA/AppData/plaid-backend
+sudo docker stop plaid-backend
+sudo mkdir data
+sudo mv plaid.db* data/
+sudo ls -la               # only app/, ssh/ and data/ should be left; move anything else into data/ too
+sudo chown -R 1000:1000 data
+```
+
+Then pull and rebuild (`git pull && docker compose up -d --build`, or **Pull & Rebuild** in zima-dashboard). If the admin page shows no banks, the database didn't land in `data/`: stop it and check before linking anything.
 
 Run CLI scripts inside the container with `docker compose exec plaid-backend node scripts/create-client.js budget-app`.
 

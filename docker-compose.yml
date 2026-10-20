@@ -1,3 +1,8 @@
+# Pins the Compose project name, so it doesn't come from the checkout's folder
+# (every app's is called "app" on ZimaOS). It also fixes the default network's
+# name at plaid-backend_default, which plaid-frontend joins.
+name: plaid-backend
+
 services:
   plaid-backend:
     build: .
@@ -9,5 +14,7 @@ services:
     ports:
       - "127.0.0.1:7600:7600"   # host-only; put tailscale serve in front
     volumes:
-      # ZimaOS persistent storage; change the host path for other machines
-      - /DATA/AppData/plaid-backend:/data
+      # ZimaOS persistent storage; change the host path for other machines.
+      # Its own data/ folder, not the whole app folder, which also holds the
+      # deploy key (ssh/) and the checkout (app/).
+      - /DATA/AppData/plaid-backend/data:/data
