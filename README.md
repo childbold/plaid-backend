@@ -64,7 +64,7 @@ All requests need `Authorization: Bearer <key>` (or `X-API-Key`).
 |---|---|---|---|
 | GET | `/api/institutions` | client | Linked banks, status, logo/colour, Plaid products, per-product sync status |
 | GET | `/api/accounts` | client | Accounts with last-synced balances |
-| GET | `/api/transactions` | client | `start`, `end` (YYYY-MM-DD), `account_id` (comma-separated), `pending`, `q`, `category` (comma-separated primary categories), `min_amount`, `max_amount`, `limit` (max 1000), `offset`. Includes logos, location, channel, counterparties |
+| GET | `/api/transactions` | client | `start`, `end` (YYYY-MM-DD), `account_id` (comma-separated), `pending`, `q`, `category` (comma-separated primary categories), `min_amount`, `max_amount`, `limit` (max 1000), `offset`. Includes logos, location, channel, counterparties, and the account each one is on (`account_mask`, `account_official_name`, `account_type`, `account_subtype`, `institution_name`) |
 | GET | `/api/balances/history` | client | One snapshot per account per day a sync ran. `start`, `end`, `account_id` |
 | GET | `/api/liabilities` | client | Cards (APRs, minimum, due date, statement), mortgages, student loans |
 | GET | `/api/holdings` | client | Holdings joined with their security |
