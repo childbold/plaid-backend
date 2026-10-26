@@ -63,9 +63,11 @@ data.get('/transactions', (req, res) => {
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db.prepare(`
-    SELECT t.transaction_id, t.account_id, a.name AS account_name, t.date, t.authorized_date, t.name,
+    SELECT t.transaction_id, t.account_id, a.name AS account_name, a.official_name AS account_official_name,
+           a.mask AS account_mask, a.type AS account_type, a.subtype AS account_subtype, i.institution_name,
+           t.date, t.authorized_date, t.name,
            t.merchant_name, t.amount, t.iso_currency_code, t.category_primary, t.category_detailed, t.pending, t.raw
-    FROM transactions t JOIN accounts a USING (account_id)
+    FROM transactions t JOIN accounts a USING (account_id) LEFT JOIN items i ON i.item_id = t.item_id
     ${clause}
     ORDER BY t.date DESC, t.transaction_id
     LIMIT @limit OFFSET @offset`).all({ ...params, limit, offset });
