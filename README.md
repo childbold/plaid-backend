@@ -111,6 +111,20 @@ New links request the extras through `required_if_supported_products`, so they d
 
 Data refreshes three ways: on link, every `SYNC_INTERVAL_MINUTES`, and when Plaid sends a new-data webhook (transactions, recurring, holdings, investment transactions or liabilities). Webhooks only arrive if `PLAID_WEBHOOK_URL` is a public HTTPS URL (Tailscale Funnel on the `/webhooks/plaid` path works). Without one, the scheduled sync covers you.
 
+## If a new link doesn't save
+
+Plaid counts an Item as soon as Link finishes, so nothing it hands back is allowed to get lost:
+
+1. **In the browser.** The admin page keeps what Link returned in localStorage until the backend confirms the save. If saving fails (Pi unreachable, server error), it shows under **Not saved yet** with Retry, Download copy and Dismiss. Retrying is safe: a link that was already saved answers with the same Item. The raw `public_token` only works for about 30 minutes, so retry soon; if the server got as far as exchanging it, the page also holds an encrypted copy of the access token that works any time.
+2. **On the Pi.** Before writing to the database, `/link/exchange` appends the new Item to `data/link-recovery.jsonl` (fsynced, mode 600). The access token in it is encrypted with `TOKEN_ENCRYPTION_KEY`, the same as in the database. To put back anything missing from the database:
+
+```bash
+docker compose exec plaid-backend node scripts/restore-links.js           # dry run
+docker compose exec plaid-backend node scripts/restore-links.js --apply   # restore
+```
+
+It only restores Items whose token Plaid still accepts, so banks you removed stay removed. Back up `link-recovery.jsonl` along with `plaid.db`.
+
 ## Security notes
 
 - Keep this on your tailnet. Only expose `/webhooks/plaid` publicly if you use webhooks.
@@ -123,6 +137,6 @@ Data refreshes three ways: on link, every `SYNC_INTERVAL_MINUTES`, and when Plai
 `.env.example` is set to `PLAID_ENV=production` with no extra products (transactions only).
 
 - `PLAID_SECRET` must be the **Production** secret from the Plaid dashboard.
-- Set `PLAID_REDIRECT_URI` to an HTTPS URL registered in the Plaid dashboard. OAuth banks (Chase and most large US banks) can't link without it.
+- Set `PLAID_REDIRECT_URI` to an HTTPS URL registered in the Plaid dashboard. OAuth banks (Chase and most large US banks) can't link without it. Point it at the admin page, e.g. `https://<pi-name>.<tailnet>.ts.net:7600/admin`, and add the exact same URL under **Allowed redirect URIs** at dashboard.plaid.com/developers/api. On a computer the bank opens in a popup; on a phone it redirects back to that URL and the admin page resumes Link.
 - Link each real bank once. Re-auth with the "Re-auth" button rather than linking again, which would use another Item.
 - Each product in `PLAID_EXTRA_PRODUCTS` is billed per Item; add only what you use.
