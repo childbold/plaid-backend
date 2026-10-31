@@ -9,6 +9,7 @@
     "start": "node src/server.js",
     "dev": "node --watch --env-file=.env src/server.js",
     "create-client": "node --env-file=.env scripts/create-client.js",
+    "restore-links": "node --env-file=.env scripts/restore-links.js",
     "gen-key": "node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\""
   },
   "dependencies": {

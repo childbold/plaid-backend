@@ -53,6 +53,12 @@
     <table><thead><tr><th>Institution</th><th>Status</th><th>Last sync</th><th></th></tr></thead><tbody id="items"></tbody></table>
   </section>
 
+  <section id="pendingBox" hidden>
+    <h2>Not saved yet</h2>
+    <div class="muted">Plaid linked these, but the backend hasn't confirmed saving them. Kept in this browser until it does.</div>
+    <table><tbody id="pending"></tbody></table>
+  </section>
+
   <section>
     <h2>Frontend clients</h2>
     <div class="row">
@@ -112,24 +118,93 @@ async function refresh() {
   } catch (e) { say(e.message, true); }
 }
 
-async function openLink(itemId) {
-  const { link_token } = await api('/link/token', { method: 'POST', body: itemId ? { item_id: itemId } : {} });
+// --- Link. Whatever Plaid hands back stays in this browser until the backend confirms it saved it. ---
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const PENDING = 'plaidPendingLinks', LINK_SESSION = 'plaidLinkSession';
+const pending = () => store.get(PENDING, []);
+const keepPending = e => store.set(PENDING, [...pending().filter(p => p.public_token !== e.public_token), e]);
+const dropPending = tok => { const l = pending().filter(p => p.public_token !== tok); store.set(PENDING, l.length ? l : null); };
+
+function renderPending() {
+  const list = pending();
+  $('pendingBox').hidden = !list.length;
+  $('pending').innerHTML = list.map((p, i) => `<tr>
+    <td>${esc(p.institution?.name || 'Unknown bank')}<div class="muted">${esc(p.at)}${p.recovery ? ' · encrypted copy kept' : ''}</div>
+      <div class="bad">${esc(p.error || '')}</div></td>
+    <td class="row">
+      <button data-pend="retry" data-i="${i}">Retry</button>
+      <button data-pend="download" data-i="${i}">Download copy</button>
+      <button data-pend="dismiss" data-i="${i}">Dismiss</button>
+    </td></tr>`).join('');
+}
+
+async function saveLink(entry) {
+  let msg, bad = false;
+  try {
+    const r = entry.recovery
+      ? await api('/link/restore', { method: 'POST', body: entry.recovery })
+      : await api('/link/exchange', { method: 'POST', body: { public_token: entry.public_token, institution: entry.institution } });
+    dropPending(entry.public_token);
+    msg = r.warning || `Linked ${entry.institution?.name || 'the bank'}. Initial sync running…`; bad = !!r.warning;
+    setTimeout(refresh, 3000);
+  } catch (e) {
+    bad = true;
+    if (entry.recovery && e.body?.gone) { dropPending(entry.public_token); msg = e.message; }
+    else {
+      keepPending({ ...entry, ...(e.body?.recovery && { recovery: e.body.recovery }), error: e.message });
+      msg = `${e.message} A copy is kept on this page; press Retry under "Not saved yet".`;
+    }
+  }
+  renderPending();
+  await refresh(); // refresh() clears the message, so say it after
+  say(msg, bad);
+}
+
+function startLink(token, itemId, receivedRedirectUri) {
+  // Kept so a phone OAuth redirect (Chase and other big banks) can finish this same Link session.
+  store.set(LINK_SESSION, { token, itemId: itemId || null });
   Plaid.create({
-    token: link_token,
+    token,
+    ...(receivedRedirectUri && { receivedRedirectUri }),
     onSuccess: async (public_token, metadata) => {
+      store.set(LINK_SESSION, null);
       if (itemId) { say('Updated. Syncing…'); await api(`/items/${itemId}/sync`, { method: 'POST' }); say('Updated.'); return refresh(); }
-      try {
-        const r = await api('/link/exchange', { method: 'POST', body: { public_token, institution: metadata.institution } });
-        say(r.warning || `Linked ${metadata.institution?.name}. Initial sync running…`, !!r.warning);
-        setTimeout(refresh, 3000);
-      } catch (e) { say(e.message, true); }
-      refresh();
+      const inst = metadata.institution;
+      const entry = { public_token, institution: inst && { institution_id: inst.institution_id, name: inst.name }, at: new Date().toISOString() };
+      keepPending(entry); // before any network call
+      renderPending();
+      await saveLink(entry);
     },
-    onExit: err => err && say(err.display_message || err.error_message || 'Link closed', true),
+    onExit: err => { store.set(LINK_SESSION, null); err && say(err.display_message || err.error_message || 'Link closed', true); },
   }).open();
 }
 
-$('save').onclick = () => { adminKey = $('key').value.trim(); sessionStorage.setItem('adminKey', adminKey); refresh(); };
+async function openLink(itemId) {
+  const { link_token } = await api('/link/token', { method: 'POST', body: itemId ? { item_id: itemId } : {} });
+  startLink(link_token, itemId);
+}
+
+$('pending').addEventListener('click', e => {
+  const b = e.target.closest('button[data-pend]'); if (!b) return;
+  const p = pending()[Number(b.dataset.i)]; if (!p) return;
+  if (b.dataset.pend === 'retry') { say('Retrying…'); saveLink(p); }
+  if (b.dataset.pend === 'download') {
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([JSON.stringify(p, null, 2)], { type: 'application/json' })),
+      download: `plaid-link-${(p.institution?.name || 'bank').replace(/\W+/g, '-')}-${p.at.slice(0, 10)}.json`,
+    });
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  if (b.dataset.pend === 'dismiss' && confirm('Forget this copy? If the bank never showed up in Linked banks, this is the only way to recover it.')) {
+    dropPending(p.public_token); renderPending();
+  }
+});
+const retryPending = () => adminKey && pending().forEach(saveLink);
+
+$('save').onclick = () => { adminKey = $('key').value.trim(); sessionStorage.setItem('adminKey', adminKey); refresh(); retryPending(); };
 $('linkBtn').onclick = () => openLink().catch(e => say(e.message, true));
 $('backupBtn').onclick = async () => {
   say('Preparing backup…');
@@ -163,7 +238,16 @@ document.body.addEventListener('click', async e => {
   } catch (err) { say(err.message, true); }
 });
 fetch('/healthz').then(r => r.json()).then(h => { $('env').textContent = 'Plaid environment: ' + h.env; });
+renderPending();
 refresh();
+
+// Back from a bank's OAuth page on a phone (?oauth_state_id=…): resume the same Link session.
+if (new URLSearchParams(location.search).has('oauth_state_id')) {
+  const href = location.href, s = store.get(LINK_SESSION, null);
+  history.replaceState(null, '', location.pathname);
+  if (s?.token) startLink(s.token, s.itemId, href);
+  else say('Back from the bank, but this browser lost the Link session. Click "Link a bank" again.', true);
+} else retryPending();
 </script>
 </body>
 </html>
