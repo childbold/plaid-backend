@@ -15,6 +15,9 @@ export const config = {
   encryptionKey: required('TOKEN_ENCRYPTION_KEY'),
   corsOrigins: list(process.env.CORS_ORIGINS, ''),
   syncIntervalMinutes: Number(process.env.SYNC_INTERVAL_MINUTES ?? 60),
+  // On-demand /transactions/refresh is billed per call, so each Item can be refreshed at most
+  // this often no matter how many frontends ask.
+  refreshCooldownMinutes: Number(process.env.REFRESH_COOLDOWN_MINUTES ?? 30),
   plaid: {
     clientId: required('PLAID_CLIENT_ID'),
     secret: required('PLAID_SECRET'),

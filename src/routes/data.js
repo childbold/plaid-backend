@@ -1,6 +1,8 @@
-// Read-only endpoints for frontends. Everything is served from the local DB, never live from Plaid.
+// Endpoints for frontends. Reads are served from the local DB, never live from Plaid.
+// The one write is POST /refresh, which asks Plaid to check the banks for new transactions.
 import { Router } from 'express';
 import { db } from '../db.js';
+import { refreshItem, refreshAll } from '../sync.js';
 
 export const data = Router();
 
@@ -23,9 +25,27 @@ function dateAndAccount(req, res, col, where, params) {
 
 data.get('/institutions', (req, res) => {
   const rows = db.prepare(`SELECT item_id, institution_id, institution_name, institution_logo, institution_color,
-    institution_url, status, last_error, last_synced_at, created_at, item_info, product_status
+    institution_url, status, last_error, last_synced_at, last_refresh_at, created_at, item_info, product_status
     FROM items ORDER BY institution_name`).all();
   res.json(rows.map(r => ({ ...r, last_error: parse(r.last_error), item_info: parse(r.item_info), product_status: parse(r.product_status) })));
+});
+
+// POST /refresh  { "item_id": "…" } for one bank, or no body for all of them.
+// Asks Plaid (/transactions/refresh, billed per call) to fetch new transactions from the bank now.
+// Returns 202 right away; the new data lands within a minute or two and shows up in /transactions,
+// and in last_synced_at on /institutions. Each bank can be refreshed once per REFRESH_COOLDOWN_MINUTES;
+// within that window the result is { skipped: "cooldown", retry_after_seconds }.
+data.post('/refresh', async (req, res) => {
+  const itemId = req.body?.item_id;
+  if (itemId !== undefined) {
+    if (typeof itemId !== 'string' || !itemId) return res.status(400).json({ error: 'item_id must be a string' });
+    const { status, ...result } = await refreshItem(itemId);
+    if (status) return res.status(status).json({ error: result.error.message });
+    return res.status(result.requested ? 202 : result.error ? 502 : 200).json({ [itemId]: result });
+  }
+  const results = await refreshAll();
+  const anyRequested = Object.values(results).some(r => r.requested);
+  res.status(anyRequested ? 202 : 200).json(results);
 });
 
 data.get('/accounts', (req, res) => {

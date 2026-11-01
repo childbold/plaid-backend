@@ -281,3 +281,61 @@ async function syncExtras(item, accessToken) {
   }), json(status), itemId);
   return results;
 }
+
+// ---------- On-demand refresh ----------
+// /transactions/refresh asks the bank for new data right now instead of waiting for Plaid's
+// own schedule. It is a paid add-on billed per call, and it's asynchronous: Plaid answers
+// immediately and sends SYNC_UPDATES_AVAILABLE when the new data is ready, which the webhook
+// handler turns into a sync. Without a webhook URL we sync on a timer a few times instead.
+
+const FOLLOW_UP_SYNCS_MS = [30_000, 120_000, 300_000];
+
+// Claims the refresh slot atomically, so concurrent callers can't both pass the cooldown.
+const claimRefresh = db.prepare(`UPDATE items SET last_refresh_at = datetime('now')
+  WHERE item_id = @item_id AND (last_refresh_at IS NULL OR last_refresh_at <= datetime('now', @cutoff))`);
+const restoreRefresh = db.prepare('UPDATE items SET last_refresh_at = ? WHERE item_id = ?');
+
+const sqlTime = s => (s ? new Date(s.replace(' ', 'T') + 'Z') : null);
+
+export async function refreshItem(itemId) {
+  const item = getItem.get(itemId);
+  if (!item) return { error: { message: 'unknown item' }, status: 404 };
+  if (item.status === 'login_required') {
+    return { skipped: 'login_required', message: 'Re-auth this bank on the admin page first' };
+  }
+
+  const cooldownMin = Math.max(config.refreshCooldownMinutes, 0);
+  const claimed = claimRefresh.run({ item_id: itemId, cutoff: `-${cooldownMin} minutes` }).changes;
+  if (!claimed) {
+    const last = getItem.get(itemId)?.last_refresh_at ?? item.last_refresh_at; // may have just been claimed
+    const next = (sqlTime(last)?.getTime() ?? Date.now()) + cooldownMin * 60_000;
+    return {
+      skipped: 'cooldown', last_refresh_at: last,
+      retry_after_seconds: Math.max(Math.ceil((next - Date.now()) / 1000), 1),
+    };
+  }
+
+  try {
+    await plaid.transactionsRefresh({ access_token: decrypt(item.access_token_enc) });
+  } catch (err) {
+    restoreRefresh.run(item.last_refresh_at, itemId); // a failed call isn't billed; don't burn the slot
+    const e = plaidError(err);
+    if (e.error_code === 'ITEM_LOGIN_REQUIRED') setStatus.run('login_required', JSON.stringify(e), itemId);
+    console.warn(`[refresh] ${itemId} failed:`, e);
+    return { error: e };
+  }
+
+  const via = config.plaid.webhookUrl ? 'webhook' : 'scheduled_sync';
+  if (via === 'scheduled_sync') {
+    for (const ms of FOLLOW_UP_SYNCS_MS) setTimeout(() => syncItem(itemId).catch(() => {}), ms).unref();
+  }
+  console.log(`[refresh] ${itemId} requested (new data arrives via ${via})`);
+  return { requested: true, via };
+}
+
+export async function refreshAll() {
+  const items = db.prepare('SELECT item_id FROM items ORDER BY created_at').all();
+  const results = {};
+  for (const { item_id } of items) results[item_id] = await refreshItem(item_id);
+  return results;
+}
