@@ -6,18 +6,25 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { plaid, plaidError } from '../plaid.js';
 import { decrypt, sha256, randomKey } from '../crypto.js';
-import { syncItem, syncAll } from '../sync.js';
+import { syncItem, syncAll, refreshItem } from '../sync.js';
 
 export const admin = Router();
 
 admin.get('/items', (req, res) => {
   res.json(db.prepare(`SELECT item_id, institution_id, institution_name, status, last_error,
-    last_synced_at, created_at, product_status FROM items ORDER BY created_at`).all()
+    last_synced_at, last_refresh_at, created_at, product_status FROM items ORDER BY created_at`).all()
     .map(r => ({ ...r, product_status: JSON.parse(r.product_status || '{}') })));
 });
 
 admin.post('/items/:id/sync', async (req, res) => {
   res.json(await syncItem(req.params.id));
+});
+
+// Same as POST /api/refresh with an item_id, for the admin page's Refresh button.
+admin.post('/items/:id/refresh', async (req, res) => {
+  const { status, ...result } = await refreshItem(req.params.id);
+  if (result.error) return res.status(status || 502).json({ ...result.error, error: result.error.message || result.error.error_code });
+  res.status(result.requested ? 202 : 200).json(result);
 });
 
 admin.post('/sync', async (req, res) => {

@@ -143,5 +143,6 @@ addColumns('items', {
   institution_url: 'TEXT',
   item_info: 'TEXT',             // /item/get JSON: products, consent expiry, etc.
   product_status: 'TEXT',        // { product: { ok, synced_at, error } }
+  last_refresh_at: 'TEXT',       // last accepted /transactions/refresh (billed per call)
 });
 addColumns('accounts', { raw: 'TEXT' });

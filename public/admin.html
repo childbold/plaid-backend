@@ -102,6 +102,7 @@ async function refresh() {
       <td class="muted">${esc(i.last_synced_at || 'never')}</td>
       <td class="row">
         <button data-act="sync" data-id="${esc(i.item_id)}">Sync</button>
+        <button data-act="refresh" data-id="${esc(i.item_id)}" title="Ask the bank for new transactions now (Plaid bills each refresh)">Refresh</button>
         ${i.status !== 'ok' ? `<button data-act="relink" data-id="${esc(i.item_id)}">Re-auth</button>`
           : Object.values(i.product_status).some(st => st.state === 'consent_required')
           ? `<button data-act="relink" data-id="${esc(i.item_id)}" title="Opens Link to approve the products this bank hasn't shared yet">Grant access</button>` : ''}
@@ -231,6 +232,12 @@ document.body.addEventListener('click', async e => {
   const { act, id } = b.dataset;
   try {
     if (act === 'sync') { say('Syncing…'); await api(`/items/${id}/sync`, { method: 'POST' }); }
+    if (act === 'refresh') {
+      const r = await api(`/items/${id}/refresh`, { method: 'POST' });
+      return say(r.requested ? 'Refresh requested. New transactions should appear within a few minutes.'
+        : r.skipped === 'cooldown' ? `Refreshed recently. Try again in ${Math.ceil(r.retry_after_seconds / 60)} min.`
+        : r.message || r.skipped || r.error?.message || 'Refresh failed', !r.requested);
+    }
     if (act === 'relink') return openLink(id);
     if (act === 'remove' && confirm('Remove this bank? This frees the Plaid slot and deletes its local data.')) await api(`/items/${id}`, { method: 'DELETE' });
     if (act === 'revoke' && confirm('Revoke this client key?')) await api(`/clients/${id}`, { method: 'DELETE' });

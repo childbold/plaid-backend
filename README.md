@@ -71,10 +71,12 @@ All requests need `Authorization: Bearer <key>` (or `X-API-Key`).
 | GET | `/api/investments/transactions` | client | Last 24 months of trades, dividends, fees. `start`, `end`, `account_id` |
 | GET | `/api/recurring` | client | Subscriptions, bills and income streams Plaid detected |
 | GET | `/api/identity` | client | Account owners: names, emails, phones, addresses |
+| POST | `/api/refresh` | client | Ask the banks for new transactions now (see [On-demand refresh](#on-demand-refresh)). `{ "item_id": "…" }` for one bank, no body for all |
 | POST | `/api/admin/link/token` | admin | `{}` for a new bank, `{ "item_id": "…" }` for re-auth (update mode) |
 | POST | `/api/admin/link/exchange` | admin | `{ public_token, institution }`, rejects duplicate banks |
 | GET | `/api/admin/items` | admin | |
 | POST | `/api/admin/items/:id/sync` | admin | |
+| POST | `/api/admin/items/:id/refresh` | admin | On-demand refresh of one bank (the admin page's **Refresh** button) |
 | POST | `/api/admin/sync` | admin | Sync everything |
 | GET | `/api/admin/backup` | admin | Downloads a consistent copy of the database (also the "Download backup" button). Tokens stay encrypted; `TOKEN_ENCRYPTION_KEY` is not included |
 | DELETE | `/api/admin/items/:id` | admin | Calls `/item/remove` to free the slot |
@@ -109,7 +111,29 @@ New links request the extras through `required_if_supported_products`, so they d
 
 ## Syncing and webhooks
 
-Data refreshes three ways: on link, every `SYNC_INTERVAL_MINUTES`, and when Plaid sends a new-data webhook (transactions, recurring, holdings, investment transactions or liabilities). Webhooks only arrive if `PLAID_WEBHOOK_URL` is a public HTTPS URL (Tailscale Funnel on the `/webhooks/plaid` path works). Without one, the scheduled sync covers you.
+Data refreshes four ways: on link, every `SYNC_INTERVAL_MINUTES`, after an [on-demand refresh](#on-demand-refresh), and when Plaid sends a new-data webhook (transactions, recurring, holdings, investment transactions or liabilities). Webhooks only arrive if `PLAID_WEBHOOK_URL` is a public HTTPS URL (Tailscale Funnel on the `/webhooks/plaid` path works). Without one, the scheduled sync covers you.
+
+### On-demand refresh
+
+A sync only pulls what Plaid already has, and Plaid checks each bank on its own schedule (a few times a day). `POST /api/refresh` calls Plaid's `/transactions/refresh` to make it check the bank right now. It's a **paid add-on** billed per call, so it needs to be enabled for your Plaid account; until it is, the call returns `502` with Plaid's error code (e.g. `PRODUCT_NOT_ENABLED`).
+
+```js
+// One bank, or omit the body to refresh every linked bank
+await fetch(`${API}/api/refresh`, {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ item_id }),
+});
+```
+
+Results are keyed by `item_id`:
+
+- `{ "requested": true, "via": "webhook" | "scheduled_sync" }` (HTTP 202): Plaid is fetching. New transactions usually land within a minute or two; watch `last_synced_at` on `/api/institutions`, then reload `/api/transactions`.
+- `{ "skipped": "cooldown", "retry_after_seconds": … }`: this bank was refreshed less than `REFRESH_COOLDOWN_MINUTES` (default 30) ago. The cooldown is shared by every frontend so a busy page can't run up the bill.
+- `{ "skipped": "login_required" }`: re-auth the bank first.
+- `{ "error": { … } }` (HTTP 502 for a single bank): Plaid refused, e.g. the add-on isn't enabled.
+
+Refresh is asynchronous. With `PLAID_WEBHOOK_URL` set, Plaid sends `SYNC_UPDATES_AVAILABLE` when the new data is ready and the backend syncs that bank. Without a webhook, the backend syncs that bank 30 seconds, 2 minutes and 5 minutes after the request instead. `last_refresh_at` on `/api/institutions` shows when each bank was last refreshed.
 
 ## If a new link doesn't save
 
