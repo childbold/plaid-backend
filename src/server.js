@@ -8,6 +8,7 @@ import { link } from './routes/link.js';
 import { admin } from './routes/admin.js';
 import { data } from './routes/data.js';
 import { webhooks } from './routes/webhooks.js';
+import { userdata } from './routes/userdata.js';
 import { syncAll } from './sync.js';
 
 const app = express();
@@ -24,7 +25,7 @@ app.use((req, res, next) => {
     res.set({
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Headers': 'Authorization, X-API-Key, Content-Type',
-      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
       Vary: 'Origin',
     });
   }
@@ -34,6 +35,8 @@ app.use((req, res, next) => {
 
 // Webhooks first: they need the raw body for signature checks.
 app.use(webhooks);
+// A one-time import or "mark all reviewed" can be larger than everything else.
+app.use(['/api/budget', '/api/edits', '/api/goals', '/api/import'], express.json({ limit: '5mb' }));
 app.use(express.json({ limit: '100kb' }));
 
 app.get('/healthz', (req, res) => res.json({ ok: true, env: config.plaid.env }));
@@ -43,7 +46,7 @@ const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 
 app.get('/admin', (req, res) => res.sendFile(path.join(publicDir, 'admin.html')));
 
 app.use('/api/admin', requireAdmin, link, admin);
-app.use('/api', requireClient, data);
+app.use('/api', requireClient, data, userdata);
 
 app.use((req, res) => res.status(404).json({ error: 'not found' }));
 app.use((err, req, res, next) => {
