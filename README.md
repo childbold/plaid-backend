@@ -3,7 +3,7 @@
 One backend that owns your Plaid connections. Frontends call this API with their own keys and never see Plaid credentials or access tokens, so every app shares the same Items.
 
 ```
-frontends ──(client API key)──▶ /api/*        read-only, served from SQLite
+frontends ──(client API key)──▶ /api/*        Plaid data (read-only) and your own data, from SQLite
 admin page ─(admin key)───────▶ /api/admin/*  link banks, sync, manage clients
 Plaid ─────(signed webhooks)──▶ /webhooks/plaid
 ```
@@ -72,6 +72,10 @@ All requests need `Authorization: Bearer <key>` (or `X-API-Key`).
 | GET | `/api/recurring` | client | Subscriptions, bills and income streams Plaid detected |
 | GET | `/api/identity` | client | Account owners: names, emails, phones, addresses |
 | POST | `/api/refresh` | client | Ask the banks for new transactions now (see [On-demand refresh](#on-demand-refresh)). `{ "item_id": "…" }` for one bank, no body for all |
+| GET / PATCH | `/api/budget` | client | Your budget: categories and line items, monthly amounts, rules, one-off moves (see [Your own data](#your-own-data)) |
+| GET / PATCH | `/api/edits` | client | Your edits to transactions (rename, category, notes, tags, reviewed, work trip) and merchant rules |
+| GET / PATCH | `/api/goals` | client | Savings and payoff goals |
+| POST | `/api/import` | client | One-time import of a frontend's old `budget.json` / `edits.json` / `goals.json` (`{ budget, edits, goals }`, each the file's `data`). Only fills an area that is still empty |
 | POST | `/api/admin/link/token` | admin | `{}` for a new bank, `{ "item_id": "…" }` for re-auth (update mode) |
 | POST | `/api/admin/link/exchange` | admin | `{ public_token, institution }`, rejects duplicate banks |
 | GET | `/api/admin/items` | admin | |
@@ -96,6 +100,23 @@ const { transactions } = await res.json();
 ```
 
 Browser frontends on a different origin must be listed in `CORS_ORIGINS`. Server-side frontends don't need CORS.
+
+## Your own data
+
+Besides what Plaid sends, the backend stores what you add on top: the budget, edits to transactions, and goals. Keeping it here, next to the accounts it describes, means every frontend shares it and the backup covers it. Its tables never reference accounts or transactions by foreign key, so removing or re-linking a bank doesn't delete your work. Schema changes for these tables are numbered steps in `src/userdata.js`, tracked in SQLite's `user_version`.
+
+`GET` returns the whole area in the shape the dashboard uses (with a `rev` that goes up on every change). `PATCH` sends only what changed, as `{ section: { id: value | null } }`, where `null` deletes; the whole patch applies in one transaction or not at all, and is checked first (unknown fields and bad values get `400`).
+
+```js
+// Mark one transaction reviewed and tag it
+await fetch(`${API}/api/edits`, { method: 'PATCH', headers, body: JSON.stringify({ tx: { [id]: { reviewed: true, tags: ['denver-oct'] } } }) });
+```
+
+| Area | Sections |
+|---|---|
+| `budget` | `items` (`{ name, parentId, order }`; deleting a category deletes its line items and everything pointing at them), `amounts` (item id → `[{ from: 'YYYY-MM', amount }]`, replaced whole), `rules` (`{ kind: 'merchant' \| 'category', value, itemId }`, one per merchant or category), `overrides` (transaction id → item id or `'exclude'`) |
+| `edits` | `tx` (transaction id → `{ name, category, notes, tags, reviewed, work }`, replaced whole), `merchants` (lowercased Plaid merchant name → `{ name, category }`), `reviewSince` (`YYYY-MM-DD`) |
+| `goals` | `goals` (id → `{ name, kind: 'save' \| 'payoff', target, by: 'YYYY-MM', accountIds, manual, start: { date, amount }, created }`) |
 
 ## What gets pulled
 
